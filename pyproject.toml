@@ -15,3 +15,8 @@ azure-storage-blob = "^12.18.3"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry.scripts]
+az-get = "azcmd.azget:main"
+az-ls = "azcmd.azls:main"
