@@ -37,3 +37,25 @@ class BlobInfo:
     def url(self):
         return f"https://{self.storage_account}.blob.core.windows.net/{self.container_name}/{self.blob_name}"
 
+    @property
+    def container_url(self):
+        return f"https://{self.storage_account}.blob.core.windows.net/{self.container_name}"
+
+    @property
+    def account_url(self):
+        return f"https://{self.storage_account}.blob.core.windows.net"
+
+    def as_dict(self):
+        return {
+            "storage_account": self.storage_account,
+            "container_name": self.container_name,
+            "blob_name": self.blob_name,
+            "url": self.url,
+            "container_url": self.container_url,
+            "account_url": self.account_url
+        }
+
+
+
+
+

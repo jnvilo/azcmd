@@ -21,3 +21,4 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 az-get = "azcmd.azget:main"
 azblob = "azcmd.azblob:main"
+azpg = "azcmd.azpg:main"

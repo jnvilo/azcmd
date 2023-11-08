@@ -5,6 +5,7 @@ from azure.mgmt.resource import ResourceManagementClient
 from dataclasses import dataclass
 from azcmd.models import BlobInfo
 from pathlib import Path
+import sys
 
 @dataclass
 class StorageAccountAccessErrorInfo:
@@ -98,6 +99,29 @@ def get_container_blobs(storage_account, container_name):
     blob_list = container_client.list_blobs()
     return blob_list
 
+def get_blob_list(storage_account, container_name, blob_path):
+    """
+    Gets a list of blobs in a container.
+    :param storage_account:
+    :param container_name:
+    :return:
+    """
+
+    credential = DefaultAzureCredential()
+    account_url = f"https://{storage_account}.blob.core.windows.net"
+    blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
+    container_client = blob_service_client.get_container_client(container_name)
+    blob_list = container_client.list_blobs()
+
+    parent_path = Path(blob_path)
+    filtered_blobs = []
+    #We have to filter the blob_list to return only the ones that start with blob_path
+    for blob in blob_list:
+        child_path = Path(blob.name)
+        if parent_path in child_path.parents:
+            filtered_blobs.append(blob)
+
+    return filtered_blobs
 
 def download_blob(storage_path, destination=None):
     """
@@ -136,12 +160,25 @@ def download_blob(storage_path, destination=None):
 
     # find out if the blob_name is a virtual directory
     if blob_name in blob_names:
-        print("Dowloading blob: {}".format(blob_name))
-        path = Path(blob_name)
-        with open(path.name, "wb") as f:
+
+        if destination and destination.endswith("/"):
+            """
+                If the destination ends with a / , then it means
+                it is a directory. Therefore we should append the blob_name to the destination
+            """
+            Path(destination).mkdir(parents=True, exist_ok=True)
+            destination = Path(destination, Path(blob_name).name)
+
+        elif destination and not destination.endswith("/"):
+            #If the destination does not end with a /, then it means
+            #it is a file. Therefore we should use the destination as is
+            destination = Path(destination)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+
+
+        with open(destination, "wb") as f:
             f.write(blob_service_client.get_blob_client(blob_info.container_name, blob_name).download_blob().readall())
     else:
-        print("reached here")
         #WE have to check that there is a blob that starts with the blob_name
         #collect all  the blobs that start with the blob_name
         filtered_blobs = []
@@ -153,6 +190,8 @@ def download_blob(storage_path, destination=None):
         for blob_name in filtered_blobs:
             path = Path(blob_name)
             path.parent.mkdir(parents=True, exist_ok=True)
+            print(f"Downloading blob: {blob_name}")
+            print(f"Saving to: {path.name}")
 
             with open(path, "wb") as f:
                 f.write(blob_service_client.get_blob_client(blob_info.container_name, blob_name).download_blob().readall())
@@ -162,16 +201,21 @@ def download_blob(storage_path, destination=None):
 
 def upload_blob(source_path, destination_path, overwrite=False):
 
-    blob_info = BlobInfo().from_path(destination_path)
-    blob_name = f"{blob_info.storage_account}/{blob_info.container_name}/{source_path}"
+    #The destination path is the whole path to the blob including the storage account, container and blob name
 
-    new_blob_info = BlobInfo().from_path(blob_name)
-    print(blob_name)
-    blob_service_client = BlobServiceClient(account_url=new_blob_info.url, credential=DefaultAzureCredential())
+    print(destination_path)
+    import sys
+
+    blob_info = BlobInfo().from_path(destination_path)
+    blob_name = blob_info.blob_name
+    from pprint import pprint
+
+    blob_service_client = BlobServiceClient(account_url=blob_info.account_url, credential=DefaultAzureCredential())
+
     with open(source_path, "rb") as data:
-        print(f"Uploading blob: {new_blob_info.blob_name}")
-        blob_client = blob_service_client.get_blob_client(container=new_blob_info.container_name,
-                                                          blob=new_blob_info.blob_name)
+        print(f"Uploading blob: {blob_info.blob_name}")
+        blob_client = blob_service_client.get_blob_client(container=blob_info.container_name,
+                                                          blob=blob_info.blob_name)
         if blob_client.exists() and overwrite is False:
             print(f"Blob {blob_name} already exists. Use --overwrite to overwrite it.")
             return
@@ -179,5 +223,55 @@ def upload_blob(source_path, destination_path, overwrite=False):
             blob_client.upload_blob(data, overwrite=overwrite)
 
 
+def verify_storage_account_exists(storage_account):
+    """
+    Verifies that a storage account exists
+    :param storage_account:
+    :return:
+    """
+    stor = get_storage_account_by_name(storage_account)
+    if stor is None:
+        return False
+    else:
+        return True
 
+def verify_container_exists(storage_account, container_name):
+    """
+    Verifies that a container exists
+    :param storage_account:
+    :param container_name:
+    :return:
+    """
+    containers = get_containers(storage_account)
+    for container in containers:
+        if container.name == container_name:
+            return True
+    return False
+
+
+def assert_storage_account_exists(storage_account):
+    """
+    Asserts that a storage account exists
+    :param storage_account:
+    :return:
+    """
+    if not verify_storage_account_exists(storage_account):
+        print(f"Storage account {storage_account} does not exist")
+        return False
+    else:
+        return True
+
+
+def assert_container_exists(storage_account, container_name):
+    """
+    Asserts that a container exists
+    :param storage_account:
+    :param container_name:
+    :return:
+    """
+    if not verify_container_exists(storage_account, container_name):
+        print(f"Container {container_name} does not exist")
+        return False
+    else:
+        return True
 

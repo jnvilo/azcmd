@@ -5,6 +5,8 @@ import argparse
 from azcmd import funcs as azfunc
 from azcmd.models import BlobInfo
 from pathlib import Path
+import sys
+
 
 class CommandRegistryBase(type):
 
@@ -78,28 +80,49 @@ class LsCommand(Command):
             storage_path_parts = storage_path.split('/')
 
             if len(storage_path_parts) == 1:
-                self.list_storage_account_containers(storage_path_parts[0])
+
+                if azfunc.verify_storage_account_exists(storage_path_parts[0]):
+                    self.list_storage_account_containers(storage_path_parts[0])
+                else:
+                    print(f"Storage account {storage_path_parts[0]} does not exist")
 
             elif len(storage_path_parts) == 2:
-                self.list_storage_account_container_blobs(storage_path_parts[0], storage_path_parts[1])
+                if azfunc.verify_storage_account_exists(storage_path_parts[0]) and \
+                    azfunc.verify_container_exists(storage_path_parts[0], storage_path_parts[1]):
+
+                    self.list_storage_account_container_blobs(storage_path_parts[0], storage_path_parts[1])
+                else:
+                    print(f"Storage account {storage_path_parts[0]} or container {storage_path_parts[1]} does not exist")
 
             elif len(storage_path_parts) > 2:
                 #Here we have a blob path and we need to list the blobs only in this path.
+
+                if not (azfunc.verify_storage_account_exists(storage_path_parts[0]) and \
+                    azfunc.verify_container_exists(storage_path_parts[0], storage_path_parts[1])):
+                    print(f"Storage account {storage_path_parts[0]} or container {storage_path_parts[1]} does not exist")
+                    return
+
                 blob_parts = storage_path_parts[2:]
                 blob_path = "/".join(blob_parts)
                 blobs = azfunc.get_container_blobs(storage_path_parts[0], storage_path_parts[1])
 
                 filtered_blobs = []
+                parent_path = Path(blob_path)
+
                 for blob in blobs:
-                    if blob.name.startswith(blob_path):
+                    child_path = Path(blob.name)
+                    if parent_path in child_path.parents:
                         filtered_blobs.append(blob)
                         print(blob.name.lstrip(blob_path).lstrip("/"))
+                    #if blob.name.startswith(blob_path):
+                    #    filtered_blobs.append(blob)
+                    #    print(blob.name.lstrip(blob_path).lstrip("/"))
+
                 return filtered_blobs
 
 class GetCommand(Command):
     def execute(self, args):
         storage_path = args.storage_path
-
         blob_info  =  BlobInfo().from_path(storage_path)
 
         # first check if the storage_account is valid
@@ -108,7 +131,7 @@ class GetCommand(Command):
             print(f"Storage account {blob_info.storage_account} not found")
             return
 
-        if blob_info.has_blob:
+        if blob_info.has_blob: #the blob name is not None
             azfunc.download_blob(storage_path)
 
         elif blob_info.has_container:
@@ -128,17 +151,35 @@ class PutCommand(Command):
         """
         source = args.source_path
         destination = args.destination_path #This is the <storage_account><container><blob> path
-
         source = Path(source)
+
+        blob_info = BlobInfo().from_path(destination)
+
+        if not azfunc.verify_storage_account_exists(blob_info.storage_account):
+            print(f"Storage account {destination} does not exist")
+            return
+        elif not azfunc.verify_container_exists(blob_info.storage_account,
+                                                blob_info.container_name):
+            print(f"Container {blob_info.container_name} does not exist")
+            return
 
         if source.is_dir():
             #upload all the files in the directory
             for file in source.glob("**/*"):
                 if file.is_file():
-                    destination_path = destination + "/" + str(file.relative_to(source))
-                    azfunc.upload_blob(str(file), destination_path)
+                    print(f"Uploading {file} to {destination}")
+                    destination_path = Path(destination ,  str(file)).as_posix()
+                    azfunc.upload_blob(str(file), destination_path, overwrite=args.overwrite)
+
         elif source.is_file():
+            #print the current working directory
             azfunc.upload_blob(str(source), destination, overwrite=args.overwrite)
+            print(f"Uploaded {source} to {destination}")
+        else:
+            print(f"Current working directory: {Path.cwd()}")
+            print(f"Source {source} is not a file or a directory")
+            with open(source, "rb") as f:
+                print(f.read())
 
 def main():
 
@@ -174,7 +215,6 @@ def main():
 
     else:
         parser.print_help()
-
 
 if __name__ == "__main__":
     main()
