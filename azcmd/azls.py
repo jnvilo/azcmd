@@ -1,43 +1,61 @@
 from azcmd.models import BlobInfo
 import argparse
+from dataclasses import dataclass
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
 from pathlib import Path
+from azcmd import funcs as azfunc
 
-def azls(blob_storage_path):
+@dataclass
+class StorageAccountAccessErrorInfo:
+    message: str = None
+    storage_account_name: str = None
+
+    def __str__(self):
+        return f"StorageAccountAccessErrorInfo: {self.storage_account_name}\n {self.message}"
+
+def get_storage_account_names():
     """
-    List the blobs in a container
+    Gets a list of storage account names for all subscriptions.
+    :return:
     """
-    blob_info = BlobInfo().from_path(blob_storage_path)
+    storage_accounts = azfunc.get_storage_accounts()
+    return [account.name for account in storage_accounts]
 
-    credential = DefaultAzureCredential()
-    account_url = f"https://{blob_info.storage_account}.blob.core.windows.net"
+def get_container_paths(storage_account=None):
+    """
+    Gets a list of storage containers for a storage account. If storage_account is not provided then
+    it gets all storage accounts for all subscriptions.
+    :param storage_account:
+    :return:
+    """
+    error_list = []
+
+    if storage_account is None:
+        storage_accounts = azfunc.get_storage_accounts()
+    else:
+        storage_accounts = [storage_account]
+
+    container_names = []
+    for account in storage_accounts:
+        try:
+            credential = DefaultAzureCredential()
+            account_url = f"https://{account.name}.blob.core.windows.net"
+            print(account_url)
+            blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
+            containers =  blob_service_client.list_containers()
+
+            for container in containers:
+                container_names.append(f"{account.name}/{container.name}")
+        except Exception as e:
+            error_list.append(StorageAccountAccessErrorInfo(e.message, account.name))
+
+    for error in error_list:
+        print(error)
+
+    return container_names
 
 
-    try:
-        blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
-        container_client = blob_service_client.get_container_client(blob_info.container_name)
-        blob_list = container_client.list_blobs()
 
-        for blob in blob_list:
-            if blob.name.startswith(blob_info.blob_name):
-                print(blob.name)
-
-    except Exception as e:
-        if e.error_code == "ContainerNotFound":
-            print(f"Container {blob_info.container_name} does not exist in storage account {blob_info.storage_account}")
-        else:
-            print("Unhandled exception:")
-            print(e.message)
-
-
-def main():
-    parser = argparse.ArgumentParser(description='List blobs in a container')
-    parser.add_argument('blob_storage_path', type=str, help='Blob storage path')
-    args = parser.parse_args()
-    azls(args.blob_storage_path)
-
-def test_main():
-    azls("/storbackupscramoprod0/cramo-test/db")
 
 
