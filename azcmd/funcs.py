@@ -1,4 +1,4 @@
-from azure.identity import DefaultAzureCredential
+from azure.identity import ManagedIdentityCredential
 from azure.mgmt.resource import SubscriptionClient
 from azure.storage.blob import BlobServiceClient
 from azure.mgmt.resource import ResourceManagementClient
@@ -17,7 +17,7 @@ class StorageAccountAccessErrorInfo:
 
 def get_subscriptions():
     """Returns a list of subscriptions"""
-    credential = DefaultAzureCredential()
+    credential = ManagedIdentityCredential()
     subscription_client = SubscriptionClient(credential)
     subscriptions = []
     for sub in subscription_client.subscriptions.list():
@@ -38,7 +38,7 @@ def get_storage_accounts():
     subscription_ids = get_subscription_ids()
     storage_accounts = []
     for subscription_id in subscription_ids:
-        credential = DefaultAzureCredential()
+        credential = ManagedIdentityCredential()
         resource_client = ResourceManagementClient(credential, subscription_id)
         for account in resource_client.resources.list(filter="resourceType eq 'Microsoft.Storage/storageAccounts'"):
             storage_accounts.append(account)
@@ -76,7 +76,7 @@ def get_containers(storage_account: str):
     :return:
     """
 
-    credential = DefaultAzureCredential()
+    credential = ManagedIdentityCredential()
     account_url = f"https://{storage_account}.blob.core.windows.net"
     blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
     containers =  blob_service_client.list_containers()
@@ -92,7 +92,7 @@ def get_container_blobs(storage_account, container_name):
     """
 
 
-    credential = DefaultAzureCredential()
+    credential = ManagedIdentityCredential()
     account_url = f"https://{storage_account}.blob.core.windows.net"
     blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
     container_client = blob_service_client.get_container_client(container_name)
@@ -107,7 +107,7 @@ def get_blob_list(storage_account, container_name, blob_path):
     :return:
     """
 
-    credential = DefaultAzureCredential()
+    credential = ManagedIdentityCredential()
     account_url = f"https://{storage_account}.blob.core.windows.net"
     blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
     container_client = blob_service_client.get_container_client(container_name)
@@ -137,7 +137,7 @@ def download_blob(storage_path, destination=None):
     print(f"blob_name={blob_info.blob_name}")
 
     account_url = f"https://{blob_info.storage_account}.blob.core.windows.net"
-    credential = DefaultAzureCredential()
+    credential = ManagedIdentityCredential()
     blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
 
     #the blob_name is the path to the file on the blob storage account. But it could also be a virtual directory.
@@ -210,7 +210,7 @@ def upload_blob(source_path, destination_path, overwrite=False):
     blob_name = blob_info.blob_name
     from pprint import pprint
 
-    blob_service_client = BlobServiceClient(account_url=blob_info.account_url, credential=DefaultAzureCredential())
+    blob_service_client = BlobServiceClient(account_url=blob_info.account_url, credential=ManagedIdentityCredential())
 
     with open(source_path, "rb") as data:
         print(f"Uploading blob: {blob_info.blob_name}")
